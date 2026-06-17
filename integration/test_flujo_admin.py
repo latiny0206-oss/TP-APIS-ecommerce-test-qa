@@ -1,7 +1,10 @@
 """
 Flujo completo admin:
-crear categoría → marca → producto → variantes → actualizar → pausar →
-crear descuento → verificar con cliente → eliminar producto.
+login → crear categoría → marca → producto → variantes (con todos los campos requeridos)
+→ actualizar → pausar → crear descuento → verificar con cliente → eliminar producto.
+
+Campos requeridos por VarianteProductoRequest:
+  productoId, color, talla, material, peso (BigDecimal), stock, precio, estacion (Enum)
 """
 
 import uuid
@@ -32,8 +35,6 @@ def test_flujo_admin_completo():
 
     suffix = uuid.uuid4().hex[:6]
 
-    # 1. Login como admin (hecho arriba)
-
     # 2. Crear categoría nueva
     cat_resp = httpx.post(
         f"{base}/categorias",
@@ -54,7 +55,7 @@ def test_flujo_admin_completo():
     assert marca_resp.status_code in (200, 201), f"Crear marca falló: {marca_resp.text}"
     marca_id = marca_resp.json()["id"]
 
-    # 4. Crear producto en esa categoría y marca
+    # 4. Crear producto
     prod_resp = httpx.post(
         f"{base}/productos",
         json={
@@ -72,7 +73,7 @@ def test_flujo_admin_completo():
     producto = prod_resp.json()
     producto_id = producto["id"]
 
-    # 5. Crear dos variantes (talla S y M, stock 5 cada una)
+    # 5. Crear dos variantes (todos los campos requeridos: color, talla, material, peso, stock, precio, estacion)
     for talla in ("S", "M"):
         var_resp = httpx.post(
             f"{base}/variantes",
@@ -80,6 +81,8 @@ def test_flujo_admin_completo():
                 "productoId": producto_id,
                 "color": "Negro",
                 "talla": talla,
+                "material": "Ripstop Nylon",
+                "peso": 0.5,
                 "stock": 5,
                 "precio": 30000.0,
                 "estacion": "INVIERNO",
@@ -112,7 +115,7 @@ def test_flujo_admin_completo():
     ids_publicos = [p["id"] for p in publicos]
     assert producto_id not in ids_publicos, "Producto PAUSADO no debería aparecer en la lista pública"
 
-    # 9. Crear descuento nuevo tipo PORCENTAJE
+    # 9. Crear descuento tipo PORCENTAJE
     hoy = date.today()
     desc_payload = {
         "nombre": f"Desc {suffix}",
@@ -127,7 +130,7 @@ def test_flujo_admin_completo():
     assert desc_resp.status_code in (200, 201), f"Crear descuento falló: {desc_resp.text}"
     descuento_codigo = desc_resp.json()["codigo"]
 
-    # 10. Login como cliente y verificar que puede buscar el descuento
+    # 10. Cliente puede buscar el descuento creado
     buscar_resp = httpx.get(
         f"{base}/descuentos/buscar",
         params={"codigo": descuento_codigo},
@@ -139,8 +142,7 @@ def test_flujo_admin_completo():
     descuento_encontrado = data[0] if isinstance(data, list) else data
     assert descuento_encontrado["codigo"] == descuento_codigo
 
-    # 11. Eliminar el producto (estado ELIMINADO)
-    # Primero reactivar para poder eliminar (algunos backends requieren que no esté PAUSADO)
+    # 11. Eliminar el producto
     reactive_payload = {**pause_resp.json(), "estado": "ACTIVO", "marcaId": marca_id, "categoriaId": categoria_id}
     httpx.put(f"{base}/productos/{producto_id}", json=reactive_payload, headers=admin_h, timeout=10)
 

@@ -37,14 +37,14 @@ def _setup_carrito_con_item(client, usuario_id: int) -> tuple[dict, dict]:
 
 @pytest.mark.api
 class TestCheckout:
-    def test_checkout_carrito_vacio_devuelve_error(self, user_client):
-        user_id = user_client._auth_data["id"]
-        carrito_resp = user_client.post("/carritos", json={"usuarioId": user_id})
+    def test_checkout_carrito_vacio_devuelve_error(self, new_user_client):
+        user_id = new_user_client._auth_data["id"]
+        carrito_resp = new_user_client.post("/carritos", json={"usuarioId": user_id})
         assert carrito_resp.status_code in (200, 201)
         carrito_id = carrito_resp.json()["id"]
 
         # Vaciar por si tiene items (no debería, recién creado)
-        resp = user_client.post(f"/carritos/{carrito_id}/checkout", json=DATOS_ENVIO)
+        resp = new_user_client.post(f"/carritos/{carrito_id}/checkout", json=DATOS_ENVIO)
         # Carrito sin items debe devolver error de negocio
         assert resp.status_code in (400, 422)
 

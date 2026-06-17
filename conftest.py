@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 
 import httpx
@@ -101,5 +102,8 @@ def admin_page(page: Page):
     page.get_by_label("Usuario").fill(ADMIN_USERNAME)
     page.get_by_label("Contraseña").fill(ADMIN_PASSWORD)
     page.get_by_role("button", name="Iniciar sesión").click()
-    expect(page).to_have_url(f"{FRONTEND_URL}/admin/dashboard", timeout=10_000)
+    # El login puede redirigir a / o directamente a /admin/dashboard según el frontend
+    page.wait_for_url(lambda url: "/login" not in url, timeout=10_000)
+    if "/admin/dashboard" not in page.url:
+        page.goto(f"{FRONTEND_URL}/admin/dashboard")
     return page
