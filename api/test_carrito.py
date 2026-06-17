@@ -1,3 +1,4 @@
+from __future__ import annotations
 import pytest
 
 
@@ -155,3 +156,84 @@ class TestDescuentoCarrito:
 
         resp = new_user_client.post(f"/carritos/{carrito['id']}/vaciar")
         assert resp.status_code in (200, 204)
+
+
+@pytest.mark.api
+class TestCarritoEdgeCases:
+    def test_agregar_variantes_diferentes_mismo_producto_crea_lineas_separadas(self, new_user_client):
+        """Dos variantes distintas del mismo producto deben ser items separados."""
+        user_id = new_user_client._auth_data["id"]
+        carrito = _crear_carrito(new_user_client, user_id)
+
+        variantes = new_user_client.get("/variantes").json()
+        # Buscar 2 variantes del mismo producto con stock
+        producto_variantes = {}
+        for v in variantes:
+            if v.get("stock", 0) > 0:
+                pid = v.get("productoId")
+                if pid not in producto_variantes:
+                    producto_variantes[pid] = []
+                producto_variantes[pid].append(v)
+
+        par = None
+        for pid, vs in producto_variantes.items():
+            if len(vs) >= 2:
+                par = vs[:2]
+                break
+        if par is None:
+            pytest.skip("No hay 2 variantes con stock del mismo producto")
+
+        # Agregar ambas variantes
+        r1 = new_user_client.post(
+            f"/carritos/{carrito['id']}/items",
+            json={"idVariante": par[0]["id"], "cantidad": 1},
+        )
+        r2 = new_user_client.post(
+            f"/carritos/{carrito['id']}/items",
+            json={"idVariante": par[1]["id"], "cantidad": 1},
+        )
+        assert r1.status_code in (200, 201)
+        assert r2.status_code in (200, 201)
+
+        # Verificar que hay 2 líneas separadas
+        carrito_data = _get_carrito(new_user_client, carrito["id"])
+        assert carrito_data is not None
+        items = carrito_data.get("items", [])
+        variante_ids = [i.get("varianteId") for i in items]
+        assert par[0]["id"] in variante_ids
+        assert par[1]["id"] in variante_ids
+        assert len([vid for vid in variante_ids if vid in (par[0]["id"], par[1]["id"])]) == 2
+
+    def test_total_carrito_coincide_con_suma_items(self, new_user_client):
+        """El total del carrito debe coincidir con la suma de precio * cantidad."""
+        user_id = new_user_client._auth_data["id"]
+        carrito = _crear_carrito(new_user_client, user_id)
+        variante = _primera_variante_con_stock(new_user_client)
+
+        new_user_client.post(
+            f"/carritos/{carrito['id']}/items",
+            json={"idVariante": variante["id"], "cantidad": 2},
+        )
+
+        total_resp = new_user_client.get(f"/carritos/{carrito['id']}/total")
+        if total_resp.status_code == 200:
+            total = float(total_resp.json())
+            esperado = float(variante["precio"]) * 2
+            assert abs(total - esperado) < 1.0, (
+                f"Total {total} no coincide con esperado {esperado}"
+            )
+
+
+@pytest.mark.api
+class TestCarritoSecurity:
+    def test_usuario_no_puede_acceder_carrito_ajeno(self, user_client, new_user_client):
+        """Un usuario no puede acceder al carrito de otro usuario."""
+        new_id = new_user_client._auth_data["id"]
+        carrito = _crear_carrito(new_user_client, new_id)
+
+        # user_client (juanperez) intenta acceder al carrito del new_user
+        resp = user_client.get(f"/carritos/{carrito['id']}")
+        assert resp.status_code in (403, 404), (
+            f"Acceso a carrito ajeno debería ser 403/404, obtuvo {resp.status_code}"
+        )
+

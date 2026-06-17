@@ -112,3 +112,71 @@ class TestLogin:
         page.locator("button").filter(has_text="Salir").click()
         # El navbar tiene "Iniciar sesión" tanto en desktop como mobile: usar .first
         expect(page.get_by_text("Iniciar sesión").first).to_be_visible(timeout=8_000)
+
+
+@pytest.mark.e2e
+class TestRegistroEdgeCasesE2E:
+    def test_registro_email_duplicado_muestra_error(self, page: Page):
+        """Registrar con un email ya existente debe mostrar error en la UI."""
+        # juanperez ya existe en el seed con email juan.perez@mail.com
+        suffix = uuid.uuid4().hex[:8]
+        page.goto(f"{FRONTEND_URL}/registro")
+        page.get_by_label("Usuario").fill(f"otro_{suffix}")
+        page.get_by_label("Nombre").fill("Otro")
+        page.get_by_label("Apellido").fill("Usuario")
+        page.get_by_label("Email").fill("juan.perez@mail.com")  # email que ya existe
+        page.get_by_label("Contraseña", exact=True).fill("Segura1234!")
+        page.get_by_label("Confirmar contraseña", exact=True).fill("Segura1234!")
+        page.get_by_role("button", name="Crear cuenta").click()
+
+        # Debe mostrar error y quedarse en /registro
+        error = page.locator("text=/error|ya existe|registrado|duplicad/i").first
+        expect(error).to_be_visible(timeout=8_000)
+        expect(page).to_have_url(re.compile(r"/registro"), timeout=3_000)
+
+    def test_registro_username_duplicado_muestra_error(self, page: Page):
+        """Registrar con un username ya existente debe mostrar error."""
+        suffix = uuid.uuid4().hex[:8]
+        page.goto(f"{FRONTEND_URL}/registro")
+        page.get_by_label("Usuario").fill("juanperez")  # username que ya existe
+        page.get_by_label("Nombre").fill("Juan")
+        page.get_by_label("Apellido").fill("Otro")
+        page.get_by_label("Email").fill(f"otro_{suffix}@test.com")
+        page.get_by_label("Contraseña", exact=True).fill("Segura1234!")
+        page.get_by_label("Confirmar contraseña", exact=True).fill("Segura1234!")
+        page.get_by_role("button", name="Crear cuenta").click()
+
+        error = page.locator("text=/error|ya existe|registrado|duplicad/i").first
+        expect(error).to_be_visible(timeout=8_000)
+        expect(page).to_have_url(re.compile(r"/registro"), timeout=3_000)
+
+
+@pytest.mark.e2e
+class TestLoginIntegrationE2E:
+    def test_login_exitoso_guarda_token_en_localstorage(self, page: Page):
+        """Tras login exitoso, cumbre_token debe existir en localStorage."""
+        page.goto(f"{FRONTEND_URL}/login")
+        page.get_by_label("Usuario").fill("juanperez")
+        page.get_by_label("Contraseña").fill("user123")
+        page.get_by_role("button", name="Iniciar sesión").click()
+        expect(page).to_have_url(f"{FRONTEND_URL}/", timeout=10_000)
+
+        token = page.evaluate("() => localStorage.getItem('cumbre_token')")
+        assert token is not None, "cumbre_token no se guardó en localStorage"
+        assert token.startswith("eyJ"), "Token no parece ser un JWT válido"
+
+    def test_logout_limpia_token_de_localstorage(self, logged_in_page: Page):
+        """Tras logout, cumbre_token debe eliminarse de localStorage."""
+        page = logged_in_page
+        page.locator("button").filter(has_text="Salir").click()
+        expect(page.get_by_text("Iniciar sesión").first).to_be_visible(timeout=8_000)
+
+        token = page.evaluate("() => localStorage.getItem('cumbre_token')")
+        assert token is None, "cumbre_token no se limpió tras logout"
+
+    def test_navbar_muestra_nombre_tras_login(self, logged_in_page: Page):
+        """El navbar debe mostrar el nombre del usuario logueado."""
+        page = logged_in_page
+        # El seed tiene juanperez con nombre "Juan"
+        expect(page.get_by_text("Juan").first).to_be_visible(timeout=5_000)
+

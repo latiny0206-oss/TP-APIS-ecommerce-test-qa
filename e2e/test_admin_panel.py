@@ -48,11 +48,8 @@ class TestAdminProductos:
         btn_nuevo = page.locator("main").get_by_role("button", name=re.compile("Nuevo producto", re.IGNORECASE))
         expect(btn_nuevo).to_be_visible(timeout=10_000)
         btn_nuevo.click()
-
-        # Drawer/modal se abre
-        drawer = page.locator("[role='dialog'], .drawer, .modal")
+        drawer = page.locator("aside.shadow-2xl, [role='dialog'], .drawer, .modal")
         expect(drawer).to_be_visible(timeout=5_000)
-
         suffix = uuid.uuid4().hex[:6]
         nombre_producto = f"Prod E2E {suffix}"
 
@@ -78,8 +75,7 @@ class TestAdminProductos:
             marca_select.select_option(index=1)
 
         # Guardar
-        page.get_by_role("button", name=re.compile("Guardar", re.IGNORECASE)).click()
-
+        page.get_by_role("button", name=re.compile("Guardar|Crear", re.IGNORECASE)).click()
         expect(drawer).to_be_hidden(timeout=8_000)
         expect(page.locator(f"text={nombre_producto}")).to_be_visible(timeout=10_000)
 
@@ -104,10 +100,8 @@ class TestAdminDescuentos:
         btn_nuevo = page.get_by_role("button", name="Nuevo cupón")
         expect(btn_nuevo).to_be_visible(timeout=10_000)
         btn_nuevo.click()
-
-        drawer = page.locator("[role='dialog'], .drawer, .modal")
+        drawer = page.locator("text=POST /api/descuentos")
         expect(drawer).to_be_visible(timeout=5_000)
-
         suffix = uuid.uuid4().hex[:4].upper()
         codigo = f"E2E{suffix}"
         hoy = date.today()
@@ -122,17 +116,14 @@ class TestAdminDescuentos:
             tipo_select.select_option("PORCENTAJE")
 
         # Valor/Porcentaje
-        valor_field = page.get_by_label(re.compile("Porcentaje|Valor", re.IGNORECASE)).first
-        if valor_field.count() > 0:
-            valor_field.fill("20")
+        valor_field = page.get_by_placeholder("20")
+        valor_field.fill("20")
 
         # Fechas
-        fecha_inicio = page.get_by_label(re.compile("Fecha.*inicio|inicio", re.IGNORECASE)).first
-        fecha_fin = page.get_by_label(re.compile("Fecha.*fin|vencimiento", re.IGNORECASE)).first
-        if fecha_inicio.count() > 0:
-            fecha_inicio.fill(hoy.isoformat())
-        if fecha_fin.count() > 0:
-            fecha_fin.fill((hoy + timedelta(days=30)).isoformat())
+        fecha_inicio = page.get_by_label("Desde")
+        fecha_fin = page.get_by_label("Hasta")
+        fecha_inicio.fill(hoy.isoformat())
+        fecha_fin.fill((hoy + timedelta(days=30)).isoformat())
 
         page.get_by_role("button", name=re.compile("Guardar|Crear|Aceptar", re.IGNORECASE)).click()
         expect(drawer).to_be_hidden(timeout=8_000)

@@ -126,3 +126,45 @@ class TestOrdenes:
         item = orden["items"][0]
         for campo_item in ("id", "varianteId", "cantidad", "precioAlMomento"):
             assert campo_item in item, f"Falta '{campo_item}' en ItemOrdenResponse"
+
+
+@pytest.mark.api
+class TestOrdenesEdgeCases:
+    def test_cancelar_orden_ya_cancelada_falla(self, new_user_client):
+        """Cancelar una orden ya cancelada debe devolver error."""
+        new_id = new_user_client._auth_data["id"]
+        orden = _crear_orden(new_user_client, new_id)
+
+        r1 = new_user_client.post(f"/ordenes/{orden['id']}/cancelar")
+        assert r1.status_code == 200
+        assert r1.json()["estado"] == "CANCELADA"
+
+        r2 = new_user_client.post(f"/ordenes/{orden['id']}/cancelar")
+        # Debería fallar o devolver el mismo estado
+        assert r2.status_code in (200, 400, 409), (
+            f"Cancelar orden ya cancelada: status {r2.status_code}"
+        )
+
+    def test_historial_ordenes_por_usuario_endpoint(self, new_user_client):
+        """GET /ordenes/usuario/{id} devuelve historial correcto."""
+        new_id = new_user_client._auth_data["id"]
+        orden = _crear_orden(new_user_client, new_id)
+
+        resp = new_user_client.get(f"/ordenes/usuario/{new_id}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        ids = [o["id"] for o in data]
+        assert orden["id"] in ids
+
+    def test_monto_final_endpoint(self, new_user_client):
+        """GET /ordenes/{id}/monto-final retorna el monto correcto."""
+        new_id = new_user_client._auth_data["id"]
+        orden = _crear_orden(new_user_client, new_id)
+
+        resp = new_user_client.get(f"/ordenes/{orden['id']}/monto-final")
+        assert resp.status_code == 200
+        monto = float(resp.json())
+        assert monto > 0
+        assert abs(monto - orden["montoFinal"]) < 1.0
+

@@ -150,3 +150,25 @@ class TestActualizarEliminarProducto:
         pid = producto["id"]
         resp = user_client.put(f"/productos/{pid}", json={**producto, "precioBase": 1.0})
         assert resp.status_code == 403
+
+
+@pytest.mark.api
+class TestProductosIntegrity:
+    def test_producto_pausado_no_aparece_en_lista_publica(self, client, admin_client):
+        """El producto con estado PAUSADO (id=7 Linterna) no debe aparecer en GET /productos."""
+        resp = client.get("/productos")
+        assert resp.status_code == 200
+        for p in resp.json():
+            assert p["estado"] != "PAUSADO", (
+                f"Producto PAUSADO '{p['nombre']}' aparece en lista pública"
+            )
+
+    def test_precio_base_siempre_positivo(self, client):
+        """Todos los productos activos deben tener precioBase > 0."""
+        resp = client.get("/productos")
+        assert resp.status_code == 200
+        for p in resp.json():
+            assert p["precioBase"] > 0, (
+                f"Producto '{p['nombre']}' tiene precioBase <= 0"
+            )
+

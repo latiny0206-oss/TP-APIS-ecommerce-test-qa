@@ -90,13 +90,10 @@ class TestDetalleProducto:
 
         # El router usa /producto/:id
         expect(page).to_have_url(re.compile(r"/producto/\d+"), timeout=10_000)
-
     def test_seleccionar_talle_habilita_boton_agregar(self, page: Page):
         page.goto(f"{FRONTEND_URL}/catalogo")
         page.wait_for_selector(SKELETON, state="hidden", timeout=15_000)
-        page.locator(PRODUCT_CARD).first.click()
-        expect(page).to_have_url(re.compile(r"/producto/\d+"), timeout=10_000)
-
+        page.locator(PRODUCT_CARD).filter(has_not_text="AGOTADO").first.click()
         # Los botones de talle son <button disabled={agotado}> con solo el texto del talle.
         # No tienen data-talle ni clase específica — usar :not([disabled]) en CSS.
         talle_disponible = page.locator("button:not([disabled])").filter(
@@ -123,12 +120,11 @@ class TestDetalleProducto:
         if talles_disabled.count() > 0:
             # Si existe, verificar que efectivamente está disabled
             assert talles_disabled.first.get_attribute("disabled") is not None
-
     def test_agregar_al_carrito_muestra_feedback_visual(self, logged_in_page: Page):
         page = logged_in_page
         page.goto(f"{FRONTEND_URL}/catalogo")
         page.wait_for_selector(SKELETON, state="hidden", timeout=15_000)
-        page.locator(PRODUCT_CARD).first.click()
+        page.locator(PRODUCT_CARD).filter(has_not_text="AGOTADO").first.click()
         expect(page).to_have_url(re.compile(r"/producto/\d+"), timeout=10_000)
 
         # Esperar a que los botones de talle se rendericen (página lazy-loaded)

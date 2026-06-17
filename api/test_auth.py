@@ -112,3 +112,112 @@ class TestEndpointProtegido:
     def test_acceso_con_token_invalido_devuelve_401(self, client):
         resp = client.get("/carritos", headers={"Authorization": "Bearer tokeninvalido"})
         assert resp.status_code in (401, 403)
+
+
+@pytest.mark.api
+class TestRegistroEdgeCases:
+    def test_registro_caracteres_especiales_nombre_preservados(self, client):
+        """Nombres con acentos y ñ deben preservarse en la respuesta."""
+        suffix = uuid.uuid4().hex[:8]
+        payload = {
+            "username": f"jose_{suffix}",
+            "email": f"jose_{suffix}@test.com",
+            "password": "Segura1234!",
+            "nombre": "José María",
+            "apellido": "García Pérez",
+        }
+        resp = client.post("/auth/register", json=payload)
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["nombre"] == "José María", "Caracteres especiales en nombre no preservados"
+
+    def test_registro_no_devuelve_password_en_response(self, client):
+        """La respuesta de registro NO debe incluir el password."""
+        suffix = uuid.uuid4().hex[:8]
+        payload = {
+            "username": f"nopwd_{suffix}",
+            "email": f"nopwd_{suffix}@test.com",
+            "password": "Segura1234!",
+            "nombre": "NoPwd",
+            "apellido": "Test",
+        }
+        resp = client.post("/auth/register", json=payload)
+        assert resp.status_code == 201
+        data = resp.json()
+        assert "password" not in data, "Response contiene password — falla de seguridad"
+
+    def test_registro_asigna_rol_cliente_no_admin(self, client):
+        """Un registro normal debe asignar rol CLIENTE, nunca ADMIN."""
+        suffix = uuid.uuid4().hex[:8]
+        payload = {
+            "username": f"rol_{suffix}",
+            "email": f"rol_{suffix}@test.com",
+            "password": "Segura1234!",
+            "nombre": "Rol",
+            "apellido": "Check",
+        }
+        resp = client.post("/auth/register", json=payload)
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["rol"] == "CLIENTE", f"Rol esperado CLIENTE, obtenido {data['rol']}"
+
+
+@pytest.mark.api
+class TestJWTValidation:
+    def test_token_jwt_tiene_estructura_valida(self, client):
+        """El token JWT debe tener 3 partes separadas por '.'."""
+        import base64
+        import json
+
+        resp = client.post("/auth/login", json={"username": "juanperez", "password": "user123"})
+        assert resp.status_code == 200
+        token = resp.json()["token"]
+
+        parts = token.split(".")
+        assert len(parts) == 3, f"JWT debe tener 3 partes, tiene {len(parts)}"
+
+        # Decodificar payload (con padding)
+        payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
+        payload = json.loads(base64.b64decode(payload_b64))
+
+        # Verificar que tiene campo 'sub' (subject) y 'exp' (expiration)
+        assert "sub" in payload, "JWT payload no contiene 'sub'"
+        assert "exp" in payload, "JWT payload no contiene 'exp'"
+
+    def test_token_jwt_expiracion_en_el_futuro(self, client):
+        """El campo 'exp' del JWT debe ser una fecha futura."""
+        import base64
+        import json
+        import time
+
+        resp = client.post("/auth/login", json={"username": "juanperez", "password": "user123"})
+        assert resp.status_code == 200
+        token = resp.json()["token"]
+
+        payload_b64 = token.split(".")[1] + "=" * (4 - len(token.split(".")[1]) % 4)
+        payload = json.loads(base64.b64decode(payload_b64))
+
+        now = int(time.time())
+        assert payload["exp"] > now, "Token JWT ya expiró al momento de crearlo"
+
+    def test_peticion_autenticada_con_token_funciona(self, client):
+        """Tras login, el token debe permitir acceder a endpoints protegidos."""
+        resp = client.post("/auth/login", json={"username": "juanperez", "password": "user123"})
+        assert resp.status_code == 200
+        token = resp.json()["token"]
+
+        # Acceder a endpoint protegido
+        resp2 = client.get("/carritos", headers={"Authorization": f"Bearer {token}"})
+        assert resp2.status_code == 200
+
+
+@pytest.mark.api
+class TestLoginSecurity:
+    def test_error_login_password_y_usuario_inexistente_son_iguales(self, client):
+        """El error de password incorrecto y usuario inexistente deben ser idénticos
+        para no filtrar información sobre qué usuarios existen."""
+        r1 = client.post("/auth/login", json={"username": "juanperez", "password": "WrongPass"})
+        r2 = client.post("/auth/login", json={"username": "noexiste_xyz", "password": "cualquier"})
+        assert r1.status_code == r2.status_code == 401, (
+            f"Ambos deben devolver 401, obtuve {r1.status_code} y {r2.status_code}"
+        )
